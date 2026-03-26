@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>The Grand Cafe | Order</title>
+    <style>
+        body { font-family: sans-serif; display: flex; margin: 0; background: #f4f4f4; height: 100vh; }
+        .sidebar { width: 300px; background: #2c3e50; color: white; padding: 20px; }
+        .content { flex: 1; padding: 20px; overflow-y: auto; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+        .card { background: white; padding: 10px; border-radius: 5px; text-align: center; color: #333; position: relative; }
+        .out-of-stock { opacity: 0.5; }
+        input { width: 100%; padding: 8px; margin: 5px 0; border-radius: 4px; border: none; }
+        button { background: #e67e22; color: white; border: none; padding: 10px; cursor: pointer; border-radius: 4px; width: 100%; }
+        .btn-add:disabled { background: #7f8c8d; cursor: not-allowed; }
+    </style>
+</head>
+<body>
+<div class="sidebar">
+    <h3>Details</h3>
+    <input type="text" id="name" placeholder="Name">
+    <input type="text" id="prn" placeholder="PRN">
+    <div style="background:#34495e; padding:10px; margin-top:20px; border-radius:5px; height: 300px; overflow-y: auto;">
+        <h4>Cart</h4>
+        <div id="cart-list"></div>
+        <hr><div id="total">Total: 0</div>
+    </div>
+    <button onclick="submitOrder()" style="background:#27ae60; margin-top:10px;">PLACE ORDER</button>
+</div>
+<div class="content">
+    <h2>🍴 The Grand Cafe Menu</h2>
+    <div id="menu-grid" class="grid"></div>
+</div>
+<audio id="ready-sound" src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" preload="auto"></audio>
+<script>
+    let menuData = [], cart = [];
+    async function loadMenu() {
+        const res = await fetch('/get-inventory');
+        menuData = await res.json();
+        document.getElementById('menu-grid').innerHTML = menuData.map(item => {
+            const soldOut = item.stock <= 0;
+            return `
+            <div class="card ${soldOut ? 'out-of-stock' : ''}">
+                ${soldOut ? '<b style="color:red; font-size:10px;">SOLD OUT</b>' : ''}
+                <h5>${item.name}</h5>
+                <p>Rs. ${item.price}</p>
+                <button class="btn-add" onclick="addToCart(${item.id})" ${soldOut ? 'disabled' : ''}>Add</button>
+            </div>`;
+        }).join('');
+    }
+    function addToCart(id) {
+        cart.push(menuData.find(i => i.id === id));
+        let total = 0;
+        document.getElementById('cart-list').innerHTML = cart.map(i => {
+            total += i.price;
+            return `<div style="display:flex; justify-content:space-between; font-size:12px;"><span>${i.name}</span><span>${i.price}</span></div>`;
+        }).join('');
+        document.getElementById('total').innerText = "Total: " + total;
+    }
+    async function submitOrder() {
+        const n = document.getElementById('name').value, p = document.getElementById('prn').value;
+        if (!n || !p || cart.length === 0) return alert("Fill details!");
+        const body = `name=${encodeURIComponent(n)}&prn=${encodeURIComponent(p)}&item_ids=${cart.map(i=>i.id).join(',')}`;
+        const res = await fetch('/place-order', { method: 'POST', body: body });
+        if (res.ok) { alert("Success!"); location.reload(); }
+    }
+    let statusInterval = null;
+
+async function startStatusCheck(prn) {
+    // Check every 5 seconds
+    statusInterval = setInterval(async () => {
+        const res = await fetch(`/check-status?prn=${encodeURIComponent(prn)}`);
+        const data = await res.json();
+
+        if (data.ready) {
+            clearInterval(statusInterval);
+            showNotification();
+        }
+    }, 5000);
+}
+
+function showNotification() {
+    // 1. Play the 'Ding' sound
+    const sound = document.getElementById('ready-sound');
+    sound.play().catch(e => console.log("Audio play failed: ", e));
+
+    // 2. Show the visual alert
+    alert("🔔 Your Encave Cafe order is ready! Please collect it from the counter.");
+}
+
+// Update your existing submitOrder function to trigger this
+async function submitOrder() {
+    const n = document.getElementById('name').value;
+    const p = document.getElementById('prn').value;
+    if (!n || !p || cart.length === 0) return alert("Fill details!");
+
+    const body = `name=${encodeURIComponent(n)}&prn=${encodeURIComponent(p)}&item_ids=${cart.map(i=>i.id).join(',')}`;
+    const res = await fetch('/place-order', { method: 'POST', body: body });
+    
+    if (res.ok) {
+        alert("Order placed! Keep this page open for your notification.");
+        startStatusCheck(p); // Start watching for the "Ready" signal
+    }
+}
+    loadMenu();
+</script>
+</body>
+</html>

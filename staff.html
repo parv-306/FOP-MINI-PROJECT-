@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Live Kitchen Queue</title>
+    <style>
+        body { font-family: sans-serif; background: #2c3e50; color: white; padding: 20px; }
+        .order-card { background: #34495e; padding: 15px; margin-bottom: 10px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; }
+        button { background: #27ae60; color: white; border: none; padding: 10px 15px; border-radius: 5px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h1>👨‍🍳 Live Kitchen Queue</h1>
+    <div id="queue">Loading orders...</div>
+
+    <script>
+        async function refreshQueue() {
+            const res = await fetch('/get-orders');
+            const data = await res.json();
+            const container = document.getElementById('queue');
+            container.innerHTML = data.map(order => `
+                <div class="order-card">
+                    <span><b>${order.customer}</b> (${order.prn}) ordered <i>${order.item}</i> <b>x${order.qty}</b></span>
+                    <button onclick="markReady('${order.customer}', '${order.item}')">Mark Ready</button>
+                </div>
+            `).join('') || "No active orders.";
+        }
+
+        async function markReady(customer, itemName) {
+    // 1. Build the body exactly how mg_http_get_var expects it
+    const params = new URLSearchParams();
+    params.append('customer', customer);
+    params.append('item_name', itemName);
+    
+    // 2. Send the POST request
+    try {
+        const res = await fetch('/update-status', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: params.toString()
+        });
+
+        if (res.ok) {
+            // 3. Refresh the queue so the order disappears instantly
+            refreshQueue(); 
+        }
+    } catch (err) {
+        console.error("Connection error:", err);
+    }
+}
+        setInterval(refreshQueue, 3000);
+        refreshQueue();
+    </script>
+</body>
+</html>
